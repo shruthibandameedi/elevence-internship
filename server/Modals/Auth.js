@@ -1,0 +1,40 @@
+import mongoose from "mongoose";
+const userschema = mongoose.Schema({
+  email: { type: String, required: true },
+  mobile: { type: String },
+  name: { type: String },
+  channelname: { type: String },
+  description: { type: String },
+  image: { type: String },
+  plan: { type: String, default: "free" },
+  subscriptionStatus: { type: String, default: "active" },
+  subscriptionStartDate: { type: Date },
+  subscriptionEndDate: { type: Date },
+  razorpayOrderId: { type: String },
+  razorpayPaymentId: { type: String },
+  razorpaySignature: { type: String },
+  joinedon: { type: Date, default: Date.now },
+  themePreference: { type: String, enum: ["light", "dark", null], default: null },
+  showLocationOnComments: { type: Boolean, default: false },
+  commentLocationCity: { type: String, default: "" },
+  trustedLoginContexts: [
+    {
+      deviceId: { type: String },
+      city: { type: String },
+      state: { type: String },
+      country: { type: String },
+      ip: { type: String },
+      verifiedAt: { type: Date, default: Date.now },
+    },
+  ],
+  otpCode: { type: String },
+  otpExpiresAt: { type: Date },
+  otpAttempts: { type: Number, default: 0 },
+  otpCooldownUntil: { type: Date },
+  lastLoginAt: { type: Date },
+  lastLoginCity: { type: String },
+  lastLoginState: { type: String },
+  lastLoginDevice: { type: String },
+});
+
+export default mongoose.model("user", userschema);

@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment files
+.env
+.env*.local
+server/.env
+
+# Next.js build artifacts & typescript cache
+.next/
+**/out/
+**/*.tsbuildinfo
+
+# OS & IDE files
+.DS_Store
+.vscode/
+*.swp
+
+# Media uploads & static logs
+server/uploads/*
+!server/uploads/.gitkeep
+*.log
