@@ -8,9 +8,17 @@ import { ThemeProvider, useTheme } from "../lib/ThemeContext";
 import { useRouter } from "next/router";
 import { OtpModal } from "@/components/OtpModal";
 
+import React, { useEffect, useState } from "react";
+
 function AppContent({ Component, pageProps }: { Component: any; pageProps: any }) {
   const router = useRouter();
-  const isWatchParty = router.pathname.startsWith("/watch-party");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isWatchParty = mounted && router.pathname ? router.pathname.startsWith("/watch-party") : false;
   const { login, pendingOtp, isOtpOpen, setIsOtpOpen } = useUser() as any;
   const { setTheme, simulatedTime, simulatedLocation } = useTheme();
 
