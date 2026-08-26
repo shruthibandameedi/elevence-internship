@@ -10,7 +10,8 @@
     "client": "npm --prefix yourtube run dev"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "next": "^15.5.0"
   },
   "dependencies": {
     "next": "^15.5.0",
