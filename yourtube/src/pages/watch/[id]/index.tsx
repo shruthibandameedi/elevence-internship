@@ -7,27 +7,29 @@ import { notFound } from "next/navigation";
 import { useRouter } from "next/router";
 import React, { useEffect, useMemo, useState } from "react";
 
+import { FALLBACK_VIDEOS } from "@/lib/fallbackVideos";
+
 const index = () => {
   const router = useRouter();
   const { id } = router.query;
   const [videos, setvideo] = useState<any>(null);
   const [video, setvide] = useState<any>(null);
   const [loading, setloading] = useState(true);
+
   useEffect(() => {
     const fetchvideo = async () => {
       if (!id || typeof id !== "string") return;
       try {
         const res = await axiosInstance.get("/video/getall");
-        if (Array.isArray(res.data)) {
-          const foundVideo = res.data.find((vid: any) => vid._id === id);
-          setvideo(foundVideo || null);
-          setvide(res.data);
-        } else {
-          setvideo(null);
-          setvide([]);
-        }
+        let allVids = Array.isArray(res.data) && res.data.length > 0 ? res.data : FALLBACK_VIDEOS;
+        const foundVideo = allVids.find((vid: any) => vid._id === id || String(vid._id) === String(id)) || FALLBACK_VIDEOS[0];
+        setvideo(foundVideo);
+        setvide(allVids);
       } catch (error) {
-        console.error("Error fetching watch video:", error);
+        console.warn("Using fallback video for watch page:", error);
+        const foundVideo = FALLBACK_VIDEOS.find((vid: any) => vid._id === id || String(vid._id) === String(id)) || FALLBACK_VIDEOS[0];
+        setvideo(foundVideo);
+        setvide(FALLBACK_VIDEOS);
       } finally {
         setloading(false);
       }

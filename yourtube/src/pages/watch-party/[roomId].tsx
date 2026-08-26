@@ -35,6 +35,8 @@ import {
 import Link from "next/link";
 import { toast } from "sonner";
 
+import { FALLBACK_VIDEOS } from "@/lib/fallbackVideos";
+
 export default function WatchPartyRoom() {
   const router = useRouter();
   const rawRoomId = router.query.roomId;
@@ -86,14 +88,17 @@ export default function WatchPartyRoom() {
       if (!vId) return;
       try {
         const res = await axiosInstance.get("/video/getall");
-        if (Array.isArray(res.data)) {
-          const found = res.data.find(
-            (item: any) => item._id === vId || String(item._id) === String(vId)
-          );
-          if (found) setVideo(found);
-        }
+        const list = Array.isArray(res.data) && res.data.length > 0 ? res.data : FALLBACK_VIDEOS;
+        const found = list.find(
+          (item: any) => item._id === vId || String(item._id) === String(vId)
+        ) || FALLBACK_VIDEOS[0];
+        if (found) setVideo(found);
       } catch (err) {
-        console.error("Error loading video details in Watch Party:", err);
+        console.warn("Using fallback video details in Watch Party:", err);
+        const found = FALLBACK_VIDEOS.find(
+          (item: any) => item._id === vId || String(item._id) === String(vId)
+        ) || FALLBACK_VIDEOS[0];
+        setVideo(found);
       }
     };
 
@@ -143,14 +148,18 @@ export default function WatchPartyRoom() {
         axiosInstance
           .get("/video/getall")
           .then((res) => {
-            if (Array.isArray(res.data)) {
-              const found = res.data.find(
-                (v: any) => v._id === effectiveVideoId || String(v._id) === String(effectiveVideoId)
-              );
-              if (found) setVideo(found);
-            }
+            const list = Array.isArray(res.data) && res.data.length > 0 ? res.data : FALLBACK_VIDEOS;
+            const found = list.find(
+              (v: any) => v._id === effectiveVideoId || String(v._id) === String(effectiveVideoId)
+            ) || FALLBACK_VIDEOS[0];
+            if (found) setVideo(found);
           })
-          .catch(console.error);
+          .catch(() => {
+            const found = FALLBACK_VIDEOS.find(
+              (v: any) => v._id === effectiveVideoId || String(v._id) === String(effectiveVideoId)
+            ) || FALLBACK_VIDEOS[0];
+            if (found) setVideo(found);
+          });
       }
 
       const hostUser = participants.find((p: any) => p.socketId === hostId || p.isHost);

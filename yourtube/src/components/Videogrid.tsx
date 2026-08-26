@@ -1,29 +1,25 @@
 import React, { useEffect, useState } from "react";
 import Videocard from "./videocard";
 import axiosInstance from "@/lib/axiosinstance";
-import { Video, AlertTriangle } from "lucide-react";
+import { Video } from "lucide-react";
+import { FALLBACK_VIDEOS } from "@/lib/fallbackVideos";
 
 const Videogrid = () => {
   const [videos, setvideo] = useState<any[]>([]);
   const [loading, setloading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchvideo = async () => {
       try {
         const res = await axiosInstance.get("/video/getall");
-        if (res && Array.isArray(res.data)) {
+        if (res && Array.isArray(res.data) && res.data.length > 0) {
           setvideo(res.data);
-          setErrorMsg(null);
         } else {
-          setvideo([]);
+          setvideo(FALLBACK_VIDEOS);
         }
       } catch (error: any) {
-        console.warn("Error fetching videos:", error?.message || error);
-        setvideo([]);
-        if (error?.code === "ERR_NETWORK" || !error?.response) {
-          setErrorMsg("Backend server is not running on http://localhost:5000.");
-        }
+        console.warn("Using fallback demo videos:", error?.message || error);
+        setvideo(FALLBACK_VIDEOS);
       } finally {
         setloading(false);
       }
@@ -53,30 +49,11 @@ const Videogrid = () => {
   if (!videos || videos.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center text-gray-500">
-        {errorMsg ? (
-          <div className="bg-amber-50/80 border border-amber-200 p-6 rounded-2xl max-w-lg shadow-sm text-center">
-            <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-amber-500" />
-            <h3 className="text-lg font-bold text-gray-800">Backend Server is Offline</h3>
-            <p className="text-sm text-gray-600 mt-1 mb-4">
-              The frontend is running, but the backend server at <code className="bg-amber-100 px-1.5 py-0.5 rounded text-amber-900 font-mono text-xs">http://localhost:5000</code> is not responding.
-            </p>
-            <div className="bg-gray-900 text-gray-200 text-left p-4 rounded-xl text-xs font-mono space-y-2">
-              <p className="font-semibold text-white">How to start both servers:</p>
-              <p className="text-emerald-400"># Option 1: Run both concurrently from root folder</p>
-              <p className="text-white">npm run dev</p>
-              <p className="text-emerald-400 mt-2"># Option 2: Run start.bat script</p>
-              <p className="text-white">Double click start.bat in project root</p>
-            </div>
-          </div>
-        ) : (
-          <>
-            <Video className="w-12 h-12 mb-3 text-gray-400" />
-            <h3 className="text-lg font-semibold text-gray-800">No Videos Available</h3>
-            <p className="text-sm text-gray-500 max-w-sm mt-1">
-              Upload a video using the Header upload button or start the backend server to load sample videos.
-            </p>
-          </>
-        )}
+        <Video className="w-12 h-12 mb-3 text-gray-400" />
+        <h3 className="text-lg font-semibold text-gray-800">No Videos Available</h3>
+        <p className="text-sm text-gray-500 max-w-sm mt-1">
+          Upload a video using the Header upload button to see it listed here.
+        </p>
       </div>
     );
   }
