@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/router";
 import { io, Socket } from "socket.io-client";
 import axiosInstance from "@/lib/axiosinstance";
@@ -29,13 +29,19 @@ import {
   Sparkles,
   ArrowLeft,
   Share2,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
 export default function WatchPartyRoom() {
   const router = useRouter();
-  const { roomId, videoId: queryVideoId } = router.query;
+  const rawRoomId = router.query.roomId;
+  const rawVideoId = router.query.videoId;
+  const safeRoomId = Array.isArray(rawRoomId) ? rawRoomId[0] : (rawRoomId as string) || "";
+  const safeVideoId = Array.isArray(rawVideoId) ? rawVideoId[0] : (rawVideoId as string) || "";
+
   const { user: authUser } = useUser();
 
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -48,6 +54,7 @@ export default function WatchPartyRoom() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"chat" | "participants">("chat");
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Media Controls State
   const [isMuted, setIsMuted] = useState(false);
@@ -61,12 +68,17 @@ export default function WatchPartyRoom() {
 
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
-  // Build local user profile fallback
-  const currentUser = authUser || {
-    _id: `guest_${Math.random().toString(36).substr(2, 6)}`,
-    name: `Guest_${Math.floor(1000 + Math.random() * 9000)}`,
-    image: "https://github.com/shadcn.png",
-  };
+  // Build stable local user profile fallback
+  const guestUser = useMemo(
+    () => ({
+      _id: `guest_${Math.random().toString(36).substr(2, 6)}`,
+      name: `Guest_${Math.floor(1000 + Math.random() * 9000)}`,
+      image: "https://github.com/shadcn.png",
+    }),
+    []
+  );
+
+  const currentUser = authUser || guestUser;
 
   // 1. Fetch Video Details when videoId is known
   useEffect(() => {
@@ -75,7 +87,9 @@ export default function WatchPartyRoom() {
       try {
         const res = await axiosInstance.get("/video/getall");
         if (Array.isArray(res.data)) {
-          const found = res.data.find((item: any) => item._id === vId);
+          const found = res.data.find(
+            (item: any) => item._id === vId || String(item._id) === String(vId)
+          );
           if (found) setVideo(found);
         }
       } catch (err) {
@@ -83,15 +97,15 @@ export default function WatchPartyRoom() {
       }
     };
 
-    if (queryVideoId && typeof queryVideoId === "string") {
-      setCurrentVideoId(queryVideoId);
-      fetchVideoDetails(queryVideoId);
+    if (safeVideoId) {
+      setCurrentVideoId(safeVideoId);
+      fetchVideoDetails(safeVideoId);
     }
-  }, [queryVideoId]);
+  }, [safeVideoId]);
 
-  // 2. Initialize Socket.IO connection
+  // 2. Initialize Socket.IO connection when router is ready
   useEffect(() => {
-    if (!roomId || typeof roomId !== "string") return;
+    if (!router.isReady || !safeRoomId) return;
 
     const newSocket = io(backendUrl, {
       transports: ["websocket", "polling"],
@@ -101,27 +115,42 @@ export default function WatchPartyRoom() {
     setSocket(newSocket);
 
     newSocket.on("connect", () => {
+      setConnectionError(null);
       setLocalSocketId(newSocket.id || "");
       newSocket.emit("join-room", {
-        roomId,
-        videoId: queryVideoId || "",
+        roomId: safeRoomId,
+        videoId: safeVideoId || "",
         user: currentUser,
       });
     });
 
-    newSocket.on("room-joined", ({ roomId, videoId, hostId, isHost, participants, videoState, chatMessages }) => {
+    newSocket.on("connect_error", () => {
+      setConnectionError("Unable to connect to Watch Party. Please try again.");
+    });
+
+    newSocket.on("room-error", ({ message }) => {
+      setConnectionError(message || "Watch Party room not found.");
+    });
+
+    newSocket.on("room-joined", ({ roomId, videoId: roomVideoId, hostId, isHost, participants, videoState, chatMessages }) => {
       setIsHost(isHost);
       setParticipants(participants);
       if (chatMessages) setChatMessages(chatMessages);
 
-      if (videoId && (!queryVideoId || queryVideoId !== videoId)) {
-        setCurrentVideoId(videoId);
-        axiosInstance.get("/video/getall").then((res) => {
-          if (Array.isArray(res.data)) {
-            const found = res.data.find((v: any) => v._id === videoId);
-            if (found) setVideo(found);
-          }
-        }).catch(console.error);
+      const effectiveVideoId = safeVideoId || roomVideoId;
+      if (effectiveVideoId) {
+        setCurrentVideoId(effectiveVideoId);
+        axiosInstance
+          .get("/video/getall")
+          .then((res) => {
+            if (Array.isArray(res.data)) {
+              const found = res.data.find(
+                (v: any) => v._id === effectiveVideoId || String(v._id) === String(effectiveVideoId)
+              );
+              if (found) setVideo(found);
+            }
+          })
+          .catch(console.error);
       }
 
       const hostUser = participants.find((p: any) => p.socketId === hostId || p.isHost);
@@ -169,10 +198,10 @@ export default function WatchPartyRoom() {
     });
 
     return () => {
-      newSocket.emit("leave-room", { roomId });
+      newSocket.emit("leave-room", { roomId: safeRoomId });
       newSocket.disconnect();
     };
-  }, [roomId, backendUrl]);
+  }, [router.isReady, safeRoomId, backendUrl]);
 
   // 3. WebRTC Setup & Media Stream Initialization
   useEffect(() => {
@@ -199,9 +228,15 @@ export default function WatchPartyRoom() {
   useEffect(() => {
     if (!socket) return;
 
-    socket.on("webrtc-offer", async ({ senderSocketId, offer, senderParticipant }) => {
+    socket.on("webrtc-offer", async ({ senderSocketId, offer }) => {
       try {
-        const pc = createPeerConnection(
+        let pc = peerConnectionsRef.current.get(senderSocketId);
+        if (pc) {
+          pc.close();
+          peerConnectionsRef.current.delete(senderSocketId);
+        }
+
+        pc = createPeerConnection(
           senderSocketId,
           (candidate) => socket.emit("webrtc-ice-candidate", { targetSocketId: senderSocketId, candidate }),
           (remoteStream) => {
@@ -228,7 +263,7 @@ export default function WatchPartyRoom() {
     socket.on("webrtc-answer", async ({ senderSocketId, answer }) => {
       try {
         const pc = peerConnectionsRef.current.get(senderSocketId);
-        if (pc) {
+        if (pc && pc.signalingState === "have-local-offer") {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
         }
       } catch (err) {
@@ -239,7 +274,7 @@ export default function WatchPartyRoom() {
     socket.on("webrtc-ice-candidate", async ({ senderSocketId, candidate }) => {
       try {
         const pc = peerConnectionsRef.current.get(senderSocketId);
-        if (pc) {
+        if (pc && pc.remoteDescription) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
         }
       } catch (err) {
@@ -254,31 +289,33 @@ export default function WatchPartyRoom() {
     };
   }, [socket, localStream]);
 
-  // Connect WebRTC peers for newly joined participants
+  // Connect WebRTC peers for newly joined participants using deterministic offerer logic
   useEffect(() => {
     if (!socket || !localSocketId || !localStream) return;
 
     participants.forEach(async (p) => {
       if (p.socketId !== localSocketId && !peerConnectionsRef.current.has(p.socketId)) {
-        try {
-          const pc = createPeerConnection(
-            p.socketId,
-            (candidate) => socket.emit("webrtc-ice-candidate", { targetSocketId: p.socketId, candidate }),
-            (remoteStream) => {
-              setRemoteStreams((prev) => new Map(prev).set(p.socketId, remoteStream));
-            }
-          );
+        if (localSocketId < p.socketId) {
+          try {
+            const pc = createPeerConnection(
+              p.socketId,
+              (candidate) => socket.emit("webrtc-ice-candidate", { targetSocketId: p.socketId, candidate }),
+              (remoteStream) => {
+                setRemoteStreams((prev) => new Map(prev).set(p.socketId, remoteStream));
+              }
+            );
 
-          peerConnectionsRef.current.set(p.socketId, pc);
+            peerConnectionsRef.current.set(p.socketId, pc);
 
-          localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+            localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
 
-          socket.emit("webrtc-offer", { targetSocketId: p.socketId, offer });
-        } catch (err) {
-          console.error("Error creating WebRTC offer for participant:", p.socketId, err);
+            socket.emit("webrtc-offer", { targetSocketId: p.socketId, offer });
+          } catch (err) {
+            console.error("Error creating WebRTC offer for participant:", p.socketId, err);
+          }
         }
       }
     });
@@ -294,7 +331,7 @@ export default function WatchPartyRoom() {
         setIsMuted(nextMuted);
 
         socket?.emit("update-media-status", {
-          roomId,
+          roomId: safeRoomId,
           isMuted: nextMuted,
           isCameraOff,
           isScreenSharing,
@@ -312,7 +349,7 @@ export default function WatchPartyRoom() {
         setIsCameraOff(nextCamOff);
 
         socket?.emit("update-media-status", {
-          roomId,
+          roomId: safeRoomId,
           isMuted,
           isCameraOff: nextCamOff,
           isScreenSharing,
@@ -337,7 +374,7 @@ export default function WatchPartyRoom() {
         });
 
         socket?.emit("update-media-status", {
-          roomId,
+          roomId: safeRoomId,
           isMuted,
           isCameraOff,
           isScreenSharing: false,
@@ -362,7 +399,7 @@ export default function WatchPartyRoom() {
         });
 
         socket?.emit("update-media-status", {
-          roomId,
+          roomId: safeRoomId,
           isMuted,
           isCameraOff: false,
           isScreenSharing: true,
@@ -372,9 +409,9 @@ export default function WatchPartyRoom() {
   };
 
   const handleSendMessage = (text: string) => {
-    if (socket && roomId) {
+    if (socket && safeRoomId) {
       socket.emit("send-chat-message", {
-        roomId,
+        roomId: safeRoomId,
         text,
         user: currentUser,
       });
@@ -382,16 +419,17 @@ export default function WatchPartyRoom() {
   };
 
   const copyInviteLink = () => {
-    const inviteUrl = `${window.location.origin}/watch-party/${roomId}${currentVideoId ? `?videoId=${currentVideoId}` : ""}`;
+    const baseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || (typeof window !== "undefined" ? window.location.origin : "");
+    const inviteUrl = `${baseUrl}/watch-party/${safeRoomId}${currentVideoId ? `?videoId=${currentVideoId}` : ""}`;
     navigator.clipboard.writeText(inviteUrl);
     setCopied(true);
-    toast.success("Watch Party invite link copied to clipboard!");
+    toast.success("Invite link copied!");
     setTimeout(() => setCopied(false), 2500);
   };
 
   const leaveWatchParty = () => {
-    if (socket && roomId) {
-      socket.emit("leave-room", { roomId });
+    if (socket && safeRoomId) {
+      socket.emit("leave-room", { roomId: safeRoomId });
     }
     if (localStream) {
       localStream.getTracks().forEach((track) => track.stop());
@@ -402,6 +440,38 @@ export default function WatchPartyRoom() {
       router.push("/");
     }
   };
+
+  if (connectionError) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-4">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 text-center max-w-md w-full space-y-4 shadow-2xl">
+          <div className="w-12 h-12 rounded-full bg-red-950/80 border border-red-800 flex items-center justify-center mx-auto text-red-400">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-white">{connectionError}</h2>
+            <p className="text-xs text-gray-400">Please check your connection or verify the room link.</p>
+          </div>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <Button
+              onClick={() => router.reload()}
+              className="bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-full px-4 py-2 flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </Button>
+            <Button
+              onClick={() => router.push("/")}
+              variant="outline"
+              className="border-gray-700 text-gray-300 hover:text-white text-xs font-medium rounded-full px-4 py-2"
+            >
+              Back to Home
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col w-full">
@@ -468,7 +538,7 @@ export default function WatchPartyRoom() {
             <WatchPartyVideoPlayer
               video={video}
               socket={socket}
-              roomId={roomId as string}
+              roomId={safeRoomId}
               isHost={isHost}
               hostName={hostName}
             />

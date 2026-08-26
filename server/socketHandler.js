@@ -6,7 +6,10 @@ export function setupSocketHandlers(io) {
 
     // Join room
     socket.on("join-room", ({ roomId, videoId, user }) => {
-      if (!roomId) return;
+      if (!roomId) {
+        socket.emit("room-error", { message: "Watch Party room not found." });
+        return;
+      }
 
       socket.join(roomId);
 
