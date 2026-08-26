@@ -540,6 +540,18 @@ export default function VideoPlayer({
         </div>
       )}
 
+      {/* Play Overlay when video is paused */}
+      {!isPlaying && !isLoading && !hasError && (
+        <div
+          onClick={togglePlayPause}
+          className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition cursor-pointer z-10"
+        >
+          <div className="w-16 h-16 rounded-full bg-red-600/90 text-white flex items-center justify-center shadow-2xl hover:scale-110 transition-transform">
+            <Play className="w-8 h-8 fill-white translate-x-0.5" />
+          </div>
+        </div>
+      )}
+
       {/* Loading / Buffering Spinner Overlay */}
       {isLoading && !hasError && (
         <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none z-20 transition-opacity duration-300">

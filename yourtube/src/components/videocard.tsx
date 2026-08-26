@@ -25,7 +25,16 @@ export default function VideoCard({ video }: any) {
             src={videoSrc}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
             preload="metadata"
+            muted
+            playsInline
           />
+          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-red-600/90 text-white flex items-center justify-center shadow-lg">
+              <svg className="w-5 h-5 fill-current translate-x-0.5" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          </div>
           <div className="absolute bottom-2 right-2 bg-black/80 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
             Video
           </div>
