@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd yourtube && npm run build",
+  "outputDirectory": "yourtube/.next",
+  "installCommand": "cd yourtube && npm install",
+  "framework": "nextjs"
+}
